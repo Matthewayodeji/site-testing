@@ -18,4 +18,17 @@ The server binds only to `127.0.0.1`. No third-party packages are required. Work
 3. Log findings that have already been verified through an approved process.
 4. Track review and finding status, and export a workspace backup when needed.
 
+## Finding risk scores
+
+Analysts assign each finding an integer score from 0 to 100. DeeTech classifies the score automatically using these inclusive ranges:
+
+| Risk level | Score |
+| --- | ---: |
+| Critical | 90–100 |
+| High | 70–89 |
+| Medium | 40–69 |
+| Low | 0–39 |
+
+Findings are ordered by score, and the dashboard's critical/high count includes open or in-progress findings with scores of 70 or higher. Risk scores support analyst triage and are not an automated vulnerability assessment.
+
 Authorization records are documentation, not proof of permission. Confirm written approval and its scope, methods, and time window with the asset owner before conducting any testing. This app contains no vulnerability scanner or active testing functionality.

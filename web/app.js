@@ -31,9 +31,23 @@
       const saved = localStorage.getItem(STORAGE_KEY);
       if (!saved) return { cases: [], findings: [], scopes: [] };
       const parsed = JSON.parse(saved);
+      let findingsMigrated = false;
+      const findings = (Array.isArray(parsed.findings) ? parsed.findings : []).map((finding) => {
+        if (Number.isInteger(finding.riskScore) && finding.riskScore >= 0 && finding.riskScore <= 100) return finding;
+        findingsMigrated = true;
+        const legacyScores = { Critical: 95, High: 80, Medium: 55, Low: 25, Informational: 15 };
+        return { ...finding, riskScore: legacyScores[finding.severity] ?? 50 };
+      });
+      if (findingsMigrated) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, findings }));
+        } catch (error) {
+          console.error("Unable to save migrated finding risk scores.", error);
+        }
+      }
       return {
         cases: Array.isArray(parsed.cases) ? parsed.cases : [],
-        findings: Array.isArray(parsed.findings) ? parsed.findings : [],
+        findings,
         scopes: Array.isArray(parsed.scopes) ? parsed.scopes : [],
       };
     } catch (error) {
@@ -81,6 +95,13 @@
 
   function slug(value) {
     return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  }
+
+  function riskLevel(score) {
+    if (score >= 90) return "Critical";
+    if (score >= 70) return "High";
+    if (score >= 40) return "Medium";
+    return "Low";
   }
 
   function isScopeCurrent(scope) {
@@ -189,16 +210,17 @@
 
   function findingRow(item) {
     const review = state.cases.find((reviewCase) => reviewCase.id === item.caseId);
-    return `<tr><td><div class="case-title">${escapeHtml(item.title)}</div><div class="case-domain">${escapeHtml(review?.domain || "Review removed")}</div></td><td><span class="case-domain">${escapeHtml(review?.title || "—")}</span></td><td><span class="severity-badge severity-${slug(item.severity)}">${escapeHtml(item.severity)}</span></td><td><span class="status-badge status-${slug(item.status)}">${escapeHtml(item.status)}</span></td><td class="row-date">${relativeDate(item.createdAt)}</td><td><button class="row-actions delete-finding" data-id="${escapeHtml(item.id)}" title="Delete finding" aria-label="Delete ${escapeHtml(item.title)}">×</button></td></tr>`;
+    const level = riskLevel(item.riskScore);
+    return `<tr><td><div class="case-title">${escapeHtml(item.title)}</div><div class="case-domain">${escapeHtml(review?.domain || "Review removed")}</div></td><td><span class="case-domain">${escapeHtml(review?.title || "—")}</span></td><td><span class="risk-score">${item.riskScore}<span>/100</span></span></td><td><span class="severity-badge severity-${slug(level)}">${level}</span></td><td><span class="status-badge status-${slug(item.status)}">${escapeHtml(item.status)}</span></td><td class="row-date">${relativeDate(item.createdAt)}</td><td><button class="row-actions delete-finding" data-id="${escapeHtml(item.id)}" title="Delete finding" aria-label="Delete ${escapeHtml(item.title)}">×</button></td></tr>`;
   }
 
   function renderFindings() {
     const query = ($("#findingSearch")?.value || "").trim().toLowerCase();
-    const severity = $("#findingSeverityFilter")?.value || "";
+    const levelFilter = $("#findingRiskLevelFilter")?.value || "";
     const filtered = [...state.findings].filter((item) =>
       (!query || `${item.title} ${item.description || ""}`.toLowerCase().includes(query)) &&
-      (!severity || item.severity === severity)
-    ).sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || b.createdAt.localeCompare(a.createdAt));
+      (!levelFilter || riskLevel(item.riskScore) === levelFilter)
+    ).sort((a, b) => b.riskScore - a.riskScore || b.createdAt.localeCompare(a.createdAt));
     $("#allFindingsBody").innerHTML = filtered.map(findingRow).join("");
     $("#findingsEmpty").classList.toggle("visible", filtered.length === 0);
     $$(".delete-finding").forEach((button) => button.addEventListener("click", () => deleteFinding(button.dataset.id)));
@@ -206,16 +228,13 @@
     updateStats();
   }
 
-  function severityRank(severity) {
-    return ({ Critical: 0, High: 1, Medium: 2, Low: 3, Informational: 4 })[severity] ?? 5;
-  }
-
   function renderPriority() {
     const active = [...state.findings].filter((item) => item.status === "Open" || item.status === "In progress")
-      .sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
+      .sort((a, b) => b.riskScore - a.riskScore || b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
     $("#priorityList").innerHTML = active.map((item) => {
       const review = state.cases.find((reviewCase) => reviewCase.id === item.caseId);
-      return `<div class="priority-item"><span class="priority-bar severity-${slug(item.severity)}"></span><div><div class="priority-title">${escapeHtml(item.title)}</div><div class="priority-meta">${escapeHtml(review?.domain || "Review removed")} · ${relativeDate(item.createdAt)}</div></div><span class="severity-badge severity-${slug(item.severity)}">${escapeHtml(item.severity)}</span></div>`;
+      const level = riskLevel(item.riskScore);
+      return `<div class="priority-item"><span class="priority-bar severity-${slug(level)}"></span><div><div class="priority-title">${escapeHtml(item.title)}</div><div class="priority-meta">${item.riskScore}/100 · ${escapeHtml(review?.domain || "Review removed")} · ${relativeDate(item.createdAt)}</div></div><span class="severity-badge severity-${slug(level)}">${level}</span></div>`;
     }).join("");
     $("#emptyFindings").classList.toggle("visible", active.length === 0);
   }
@@ -235,7 +254,7 @@
   function updateStats() {
     const activeCases = state.cases.filter((item) => item.status !== "Complete").length;
     const openFindings = state.findings.filter((item) => item.status === "Open" || item.status === "In progress").length;
-    const urgent = state.findings.filter((item) => (item.severity === "Critical" || item.severity === "High") && (item.status === "Open" || item.status === "In progress")).length;
+    const urgent = state.findings.filter((item) => ["Critical", "High"].includes(riskLevel(item.riskScore)) && (item.status === "Open" || item.status === "In progress")).length;
     const activeScopes = state.scopes.filter(isScopeCurrent).length;
     $("#openReviewsStat").textContent = activeCases;
     $("#triageStat").textContent = openFindings;
@@ -327,7 +346,8 @@
     $("#caseSearch").addEventListener("input", renderCases);
     $("#caseStatusFilter").addEventListener("change", renderCases);
     $("#findingSearch").addEventListener("input", renderFindings);
-    $("#findingSeverityFilter").addEventListener("change", renderFindings);
+    $("#findingRiskLevelFilter").addEventListener("change", renderFindings);
+    $("#findingRiskScore").addEventListener("input", updateRiskPreview);
 
     $("#scopeForm").addEventListener("submit", (event) => {
       event.preventDefault();
@@ -381,9 +401,14 @@
       const form = new FormData(event.currentTarget);
       const reviewCase = state.cases.find((item) => item.id === form.get("caseId"));
       if (!reviewCase) { $("#findingError").textContent = "Select an existing review case."; return; }
+      const riskScore = Number(form.get("riskScore"));
+      if (!Number.isInteger(riskScore) || riskScore < 0 || riskScore > 100) {
+        $("#findingError").textContent = "Enter a whole-number risk score from 0 to 100.";
+        return;
+      }
       const finding = {
         id: id(), title: String(form.get("title")).trim(), caseId: reviewCase.id,
-        severity: form.get("severity"), status: form.get("status"),
+        riskScore, status: form.get("status"),
         description: String(form.get("description")).trim(), createdAt: new Date().toISOString(),
       };
       state.findings.push(finding);
@@ -393,6 +418,15 @@
       refresh();
       showToast("Finding recorded.");
     });
+  }
+
+  function updateRiskPreview() {
+    const input = $("#findingRiskScore");
+    const preview = $("#riskLevelPreview");
+    const score = Number(input.value);
+    const valid = input.value !== "" && Number.isInteger(score) && score >= 0 && score <= 100;
+    preview.textContent = valid ? riskLevel(score) : "Enter 0–100";
+    preview.className = valid ? `risk-preview severity-${slug(riskLevel(score))}` : "risk-preview";
   }
 
   $("#todayLabel").textContent = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
