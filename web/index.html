@@ -22,6 +22,8 @@
         <button class="nav-item" data-view="cases"><span class="nav-icon"><svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="15" height="12" rx="2"/><path d="M7 4.5v-2h6v2M2.5 9.5h15M8 9.5v2h4v-2"/></svg></span>Review cases<span class="nav-count" id="caseNavCount">0</span></button>
         <button class="nav-item" data-view="findings"><span class="nav-icon"><svg viewBox="0 0 20 20"><path d="M10 2.5 18 17H2L10 2.5Z"/><path d="M10 7v4.5m0 2.5h.01"/></svg></span>Findings<span class="nav-count" id="findingNavCount">0</span></button>
         <button class="nav-item" data-view="scope"><span class="nav-icon"><svg viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.5c0 3.8-2.5 6.1-6 8-3.5-1.9-6-4.2-6-8V5l6-2.5Z"/><path d="m7.5 9.5 1.7 1.7 3.5-3.7"/></svg></span>Scope &amp; authorization</button>
+        <button class="nav-item" data-view="network"><span class="nav-icon"><svg viewBox="0 0 20 20"><rect x="2.5" y="3" width="6" height="5" rx="1"/><rect x="11.5" y="3" width="6" height="5" rx="1"/><rect x="7" y="12" width="6" height="5" rx="1"/><path d="M5.5 8v2h9V8m-4.5 2v2"/></svg></span>Hosts &amp; API</button>
+        <button class="nav-item" data-view="cloud"><span class="nav-icon"><svg viewBox="0 0 20 20"><path d="M5 15.5h9a3 3 0 0 0 .2-6A4.5 4.5 0 0 0 5.7 8a3.8 3.8 0 0 0-.7 7.5Z"/><path d="m7 12 2 2 4-4"/></svg></span>Cloud review</button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -79,7 +81,7 @@
 
         <section class="view-panel hidden" id="casesView">
           <div class="page-heading"><div><div class="eyebrow">CASE MANAGEMENT</div><h1>Review cases</h1><p class="page-subtitle">Organize authorized web reviews and track their progress.</p></div><button class="button button-primary" data-open-modal="caseModal"><span class="plus">+</span> New review</button></div>
-          <section class="panel full-panel"><div class="toolbar"><div class="search-wrap"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="caseSearch" type="search" placeholder="Search reviews or domains..." aria-label="Search reviews"></div><select id="caseStatusFilter" aria-label="Filter reviews by status"><option value="">All statuses</option><option>In progress</option><option>Needs review</option><option>Complete</option></select></div><div class="table-scroll"><table><thead><tr><th>REVIEW</th><th>TARGET</th><th>STATUS</th><th>FINDINGS</th><th>UPDATED</th><th></th></tr></thead><tbody id="allCasesBody"></tbody></table></div><div class="empty-state" id="casesEmpty"><div class="empty-icon">⌕</div><strong>No matching reviews</strong><p>Try another search, or create a review case.</p></div></section>
+          <section class="panel full-panel"><div class="toolbar"><div class="search-wrap"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="caseSearch" type="search" placeholder="Search reviews, domains, or IPs..." aria-label="Search reviews"></div><select id="caseStatusFilter" aria-label="Filter reviews by status"><option value="">All statuses</option><option>In progress</option><option>Needs review</option><option>Complete</option></select></div><div class="table-scroll"><table><thead><tr><th>REVIEW</th><th>TARGET</th><th>STATUS</th><th>FINDINGS</th><th>UPDATED</th><th></th></tr></thead><tbody id="allCasesBody"></tbody></table><div class="empty-state" id="casesEmpty"><div class="empty-icon">⌕</div><strong>No matching reviews</strong><p>Try another search, or create a review case.</p></div></section>
           <footer class="page-footer"><span><span class="footer-dot"></span> Data stored locally in this browser.</span><span>DeeTech <b>·</b> SOC Web Review</span></footer>
         </section>
 
@@ -95,6 +97,32 @@
           <section class="panel full-panel"><div class="panel-heading scope-heading"><div><div class="section-kicker">DOCUMENTED PERMISSIONS</div><h2>Authorization register</h2></div><span class="register-count" id="scopeCount">0 RECORDS</span></div><div class="scope-list" id="scopeList"></div><div class="empty-state" id="scopeEmpty"><div class="empty-icon">⌑</div><strong>No authorization records</strong><p>Add an authorization record before organizing a review.</p><button class="button button-outline" data-open-modal="scopeModal">Add authorization</button></div></section>
           <footer class="page-footer"><span><span class="footer-dot"></span> Target URLs are never contacted by this application.</span><span>DeeTech <b>·</b> SOC Web Review</span></footer>
         </section>
+
+        <section class="view-panel hidden" id="networkView">
+          <div class="page-heading"><div><div class="eyebrow">AUTHORIZED ASSET WORKSPACE</div><h1>Hosts &amp; API</h1><p class="page-subtitle">Keep a manual record of approved host observations and API test results.</p></div></div>
+          <div class="notice-banner"><div class="notice-symbol"><svg viewBox="0 0 20 20"><path d="M10 2.5 18 17H2L10 2.5Z"/><path d="M10 7v4m0 2.5h.01"/></svg></div><div><strong>Manual records only — no discovery or API requests</strong><p>Record observations and results collected separately under written authorization. DeeTech does not probe hosts or call API endpoints.</p></div></div>
+          <div class="network-grid">
+            <section class="panel full-panel">
+              <div class="panel-heading"><div><div class="section-kicker">INTERNAL INVENTORY</div><h2>Host observations</h2></div><button class="button button-primary" data-open-modal="hostModal"><span class="plus">+</span> Record host</button></div>
+              <div class="table-scroll"><table><thead><tr><th>HOST</th><th>AUTHORIZED RANGE</th><th>OBSERVATION</th><th>RECORDED</th><th></th></tr></thead><tbody id="hostTableBody"></tbody></table></div>
+              <div class="empty-state" id="hostsEmpty"><div class="empty-icon">⌕</div><strong>No host observations</strong><p>Record an IPv4 host observation from your authorized inventory.</p></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="panel-heading"><div><div class="section-kicker">API REVIEW LOG</div><h2>API test results</h2></div><button class="button button-primary" data-open-modal="apiCheckModal"><span class="plus">+</span> Record API test</button></div>
+              <div class="table-scroll"><table><thead><tr><th>TEST / ENDPOINT</th><th>METHOD</th><th>AUTHORIZED SCOPE</th><th>RESULT</th><th>HTTP</th><th>RECORDED</th><th></th></tr></thead><tbody id="apiChecksTableBody"></tbody></table></div>
+              <div class="empty-state" id="apiChecksEmpty"><div class="empty-icon">⌕</div><strong>No API test results</strong><p>Document a result from an API test performed separately within its authorized scope.</p></div>
+            </section>
+          </div>
+          <footer class="page-footer"><span><span class="footer-dot"></span> Host observations and API results are stored locally.</span><span>DeeTech <b>·</b> SOC Web Review</span></footer>
+        </section>
+
+        <section class="view-panel hidden" id="cloudView">
+          <div class="page-heading"><div><div class="eyebrow">CLOUD CONFIGURATION REVIEW</div><h1>Cloud review</h1><p class="page-subtitle">A manual checklist for reviewing common cloud security controls.</p></div><button class="button button-primary" data-open-modal="cloudCheckModal"><span class="plus">+</span> Record check</button></div>
+          <div class="notice-banner"><div class="notice-symbol"><svg viewBox="0 0 20 20"><path d="M10 2.5 18 17H2L10 2.5Z"/><path d="M10 7v4m0 2.5h.01"/></svg></div><div><strong>Guidance and record keeping only</strong><p>Review configuration in your provider's console under written authorization. DeeTech does not connect to AWS, Azure, or GCP, inspect accounts, or run security tests.</p></div></div>
+          <section class="panel cloud-guide-panel"><div class="panel-heading"><div><div class="section-kicker">MANUAL REVIEW GUIDE</div><h2>Common configuration checks</h2></div><span class="register-count">AWS · AZURE · GCP</span></div><div id="cloudControlList" class="cloud-control-list"></div></section>
+          <section class="panel full-panel cloud-results-panel"><div class="panel-heading"><div><div class="section-kicker">LOCAL REVIEW LOG</div><h2>Recorded results</h2><div class="cloud-summary" id="cloudCheckSummary">0 recorded · 0 pass · 0 need attention</div></div><button class="button button-primary" data-open-modal="cloudCheckModal"><span class="plus">+</span> Record check</button></div><div class="table-scroll"><table><thead><tr><th>ACCOUNT / PROJECT</th><th>CONTROL</th><th>RESULT</th><th>RECORDED</th><th></th></tr></thead><tbody id="cloudChecksBody"></tbody></table></div><div class="empty-state" id="cloudChecksEmpty"><div class="empty-icon">⌕</div><strong>No cloud checks recorded</strong><p>Select a checklist item and record what you verified manually.</p></div></section>
+          <footer class="page-footer"><span><span class="footer-dot"></span> Cloud review records are stored locally; avoid secrets and personal data.</span><span>DeeTech <b>·</b> SOC Web Review</span></footer>
+        </section>
       </div>
     </main>
   </div>
@@ -102,11 +130,11 @@
   <div class="modal-backdrop hidden" id="caseModal" role="dialog" aria-modal="true" aria-labelledby="caseModalTitle">
     <form class="modal" id="caseForm"><div class="modal-header"><div><div class="section-kicker">CASE MANAGEMENT</div><h2 id="caseModalTitle">Create review case</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p class="modal-intro">Document an authorized assessment. No requests will be sent to the target.</p>
       <label>Review name<input name="title" required maxlength="90" placeholder="e.g. Public site security review"></label>
-      <label>Target domain<input name="domain" required maxlength="253" placeholder="example.edu" autocomplete="off"><small>Enter a domain only. It will be recorded, not visited or scanned.</small></label>
+      <label>Target domain or IPv4<input name="domain" required maxlength="253" placeholder="example.edu or 192.168.1.20" autocomplete="off"><small id="caseDomainHelp">Enter a domain or IPv4 address covered by the selected authorization. It will be recorded, not contacted.</small></label>
       <label>Authorization record<select name="scopeId" id="caseScopeSelect" required><option value="">Select a current authorization</option></select></label>
       <div class="form-row"><label>Review status<select name="status"><option>In progress</option><option>Needs review</option><option>Complete</option></select></label><label>Review lead<input name="assignee" maxlength="60" placeholder="Analyst name"></label></div>
       <label>Notes<textarea name="notes" rows="3" maxlength="500" placeholder="Purpose, constraints, or handoff notes..."></textarea></label><div class="form-error" id="caseError" role="alert"></div>
-      <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit">Create review</button></div>
+      <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" id="caseSubmit" type="submit">Create review</button></div>
     </form>
   </div>
 
@@ -122,7 +150,7 @@
 
   <div class="modal-backdrop hidden" id="scopeModal" role="dialog" aria-modal="true" aria-labelledby="scopeModalTitle">
     <form class="modal" id="scopeForm"><div class="modal-header"><div><div class="section-kicker">RULES OF ENGAGEMENT</div><h2 id="scopeModalTitle">Add authorization record</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p class="modal-intro">Log the approval details for a written authorization you have already obtained.</p>
-      <label>Authorized domain<input name="domain" required maxlength="253" placeholder="example.edu" autocomplete="off"><small>Domain only; no connection to the target will be made.</small></label>
+      <label>Authorized domain, IPv4, or CIDR range<input name="domain" required maxlength="253" placeholder="example.edu or 192.168.1.0/24" autocomplete="off"><small>Enter a domain, IPv4 address, or IPv4 CIDR range. This is a record only; no connection will be made.</small></label>
       <div class="form-row"><label>Approver / owner<input name="approver" required maxlength="80" placeholder="Name or department"></label><label>Reference / ticket ID<input name="reference" maxlength="80" placeholder="Approval reference"></label></div>
       <div class="form-row"><label>Valid from<input name="startDate" type="date" required></label><label>Valid through<input name="endDate" type="date" required></label></div>
       <label>Approved activities<textarea name="activities" rows="3" maxlength="500" placeholder="Record only the methods explicitly approved by the owner."></textarea></label>
@@ -131,7 +159,40 @@
     </form>
   </div>
 
+  <div class="modal-backdrop hidden" id="hostModal" role="dialog" aria-modal="true" aria-labelledby="hostModalTitle">
+    <form class="modal" id="hostForm"><div class="modal-header"><div><div class="section-kicker">MANUAL HOST OBSERVATION</div><h2 id="hostModalTitle">Record host</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p class="modal-intro">Document an IPv4 host observed separately within an authorized range. This form does not perform discovery.</p>
+      <label>Host name or label<input name="name" required maxlength="100" placeholder="e.g. Build server"></label>
+      <label>IPv4 address<input name="ipAddress" required maxlength="15" inputmode="numeric" placeholder="192.168.1.20"></label>
+      <label>Authorization record<select name="scopeId" id="hostScopeSelect" required><option value="">Select a current IPv4 authorization</option></select></label>
+      <label>Observation<select name="status"><option>Observed</option><option>Unreachable</option><option>Unknown</option></select></label>
+      <label>Notes<textarea name="notes" rows="3" maxlength="500" placeholder="Observation source or handoff notes; do not include credentials."></textarea></label><div class="form-error" id="hostError" role="alert"></div>
+      <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit">Save host</button></div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop hidden" id="apiCheckModal" role="dialog" aria-modal="true" aria-labelledby="apiCheckModalTitle">
+    <form class="modal" id="apiCheckForm"><div class="modal-header"><div><div class="section-kicker">MANUAL API TEST LOG</div><h2 id="apiCheckModalTitle">Record API test</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p class="modal-intro">Log results from a test performed separately. DeeTech will not send requests. Never record API keys, tokens, or personal data.</p>
+      <label>Test name<input name="title" required maxlength="100" placeholder="e.g. Health endpoint response"></label>
+      <label>API endpoint<input name="endpoint" type="url" required maxlength="500" placeholder="https://api.example.com/v1/health" autocomplete="off"><small>Use an endpoint URL without credentials or query parameters.</small></label>
+      <div class="form-row"><label>HTTP method<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select></label><label>Result<select name="outcome"><option>Not run</option><option>Pass</option><option>Needs review</option><option>Fail</option></select></label></div>
+      <div class="form-row"><label>HTTP status code<input name="statusCode" type="number" min="100" max="599" step="1" placeholder="Optional"></label><label>Authorization record<select name="scopeId" id="apiScopeSelect" required><option value="">Select a current authorization</option></select></label></div>
+      <label>Notes<textarea name="notes" rows="3" maxlength="800" placeholder="Summarize the test and result. Do not include credentials or sensitive response data."></textarea></label><div class="form-error" id="apiCheckError" role="alert"></div>
+      <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit">Save result</button></div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop hidden" id="cloudCheckModal" role="dialog" aria-modal="true" aria-labelledby="cloudCheckModalTitle">
+    <form class="modal" id="cloudCheckForm"><div class="modal-header"><div><div class="section-kicker">MANUAL CONFIGURATION REVIEW</div><h2 id="cloudCheckModalTitle">Record cloud check</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p class="modal-intro">Record a configuration observation you made in the cloud provider console. No account connection or test is performed.</p>
+      <div class="form-row"><label>Cloud provider<select name="provider"><option>AWS</option><option>Microsoft Azure</option><option>Google Cloud</option><option>Other</option></select></label><label>Account / project label<input name="resource" required maxlength="100" placeholder="Non-secret label only"></label></div>
+      <label>Checklist control<select name="controlId" id="cloudControlSelect" required></select><small id="cloudControlGuidance" aria-live="polite"></small></label>
+      <label>Result<select name="result"><option>Not assessed</option><option>Pass</option><option>Needs review</option><option>Fail</option><option>Not applicable</option></select></label>
+      <label>Notes<textarea name="notes" rows="4" maxlength="800" placeholder="Summarize what you verified and any follow-up. Do not include credentials, tokens, or sensitive configuration values."></textarea></label>
+      <label class="checkbox-label"><input name="confirmed" type="checkbox" required><span>I am authorized to review this cloud environment and recorded this result manually.</span></label><div class="form-error" id="cloudCheckError" role="alert"></div>
+      <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit">Save result</button></div>
+    </form>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <div class="modal-backdrop hidden" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle"><div class="modal help-modal"><div class="modal-header"><div><div class="section-kicker">ABOUT THIS WORKSPACE</div><h2 id="helpTitle">DeeTech</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p>A local SOC review organizer for documenting permission, web assessment cases, and analyst-entered findings.</p><ul><li>No target is contacted, crawled, or scanned.</li><li>Authorization entries are records, not proof of permission.</li><li>Workspace data is stored in this browser's local storage.</li><li>Use Export workspace to back up or transfer your records.</li></ul><div class="modal-actions"><button class="button button-primary" type="button" data-close-modal>Got it</button></div></div></div>
+  <div class="modal-backdrop hidden" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle"><div class="modal help-modal"><div class="modal-header"><div><div class="section-kicker">ABOUT THIS WORKSPACE</div><h2 id="helpTitle">DeeTech</h2></div><button class="close-button" type="button" data-close-modal aria-label="Close dialog">×</button></div><p>A local SOC review organizer for documenting authorization, web review cases, host and API observations, cloud configuration checks, and analyst-entered findings.</p><ul><li>No target is contacted, crawled, scanned, or connected to.</li><li>Authorization entries are records, not proof of permission.</li><li>Workspace data is stored in this browser's local storage.</li><li>Use Export workspace to back up or transfer your records.</li></ul><div class="modal-actions"><button class="button button-primary" type="button" data-close-modal>Got it</button></div></div></div>
 </body>
 </html>

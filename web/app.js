@@ -3,10 +3,22 @@
 
   const STORAGE_KEY = "deetech-soc-workspace-v1";
   const THEME_KEY = "deetech-soc-theme";
+  const CLOUD_CONTROLS = [
+    { id: "identity-mfa", category: "Identity", title: "Multi-factor authentication", guidance: "Review whether MFA is enforced for administrator and other privileged accounts, including emergency access procedures." },
+    { id: "least-privilege", category: "Identity", title: "Least-privilege access", guidance: "Review assigned roles and policies for excessive or stale permissions; verify access has an owner and review cadence." },
+    { id: "public-storage", category: "Data protection", title: "Public storage access", guidance: "Review storage account and bucket policies for unintended public access and confirm any exceptions are documented." },
+    { id: "encryption", category: "Data protection", title: "Encryption settings", guidance: "Review encryption-at-rest settings for storage and databases, and confirm encryption in transit is required where applicable." },
+    { id: "audit-logging", category: "Detection", title: "Audit logging", guidance: "Review whether control-plane and relevant data-access logs are enabled, protected from alteration, and retained per policy." },
+    { id: "network-exposure", category: "Network", title: "Network exposure", guidance: "Review firewall and security-group rules for unnecessary public ingress, especially administrative services; verify approved exceptions." },
+    { id: "backup-recovery", category: "Resilience", title: "Backup and recovery", guidance: "Review backup coverage, access protections, retention, and evidence of a recent restore exercise." },
+    { id: "secret-management", category: "Data protection", title: "Secret management", guidance: "Review whether application secrets are kept in an approved secrets manager, access is restricted, and rotation is defined." },
+    { id: "security-alerts", category: "Detection", title: "Security alerts", guidance: "Review cloud security alerts and findings for ownership, notification routing, and a documented response process." },
+  ];
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const state = loadState();
   let toastTimer;
+  let editingCaseId = null;
 
   function getTheme() {
     try {
@@ -29,7 +41,7 @@
   function loadState() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return { cases: [], findings: [], scopes: [] };
+      if (!saved) return { cases: [], findings: [], scopes: [], hosts: [], apiChecks: [], cloudChecks: [] };
       const parsed = JSON.parse(saved);
       let findingsMigrated = false;
       const findings = (Array.isArray(parsed.findings) ? parsed.findings : []).map((finding) => {
@@ -49,10 +61,13 @@
         cases: Array.isArray(parsed.cases) ? parsed.cases : [],
         findings,
         scopes: Array.isArray(parsed.scopes) ? parsed.scopes : [],
+        hosts: Array.isArray(parsed.hosts) ? parsed.hosts : [],
+        apiChecks: Array.isArray(parsed.apiChecks) ? parsed.apiChecks : [],
+        cloudChecks: Array.isArray(parsed.cloudChecks) ? parsed.cloudChecks : [],
       };
     } catch (error) {
       console.error("Unable to load the local workspace.", error);
-      return { cases: [], findings: [], scopes: [] };
+      return { cases: [], findings: [], scopes: [], hosts: [], apiChecks: [], cloudChecks: [] };
     }
   }
 
@@ -132,7 +147,7 @@
   }
 
   function showView(name) {
-    const labels = { overview: "Overview", cases: "Review cases", findings: "Findings", scope: "Scope & authorization" };
+    const labels = { overview: "Overview", cases: "Review cases", findings: "Findings", scope: "Scope & authorization", network: "Hosts & API", cloud: "Cloud review" };
     $$(".view-panel").forEach((panel) => panel.classList.add("hidden"));
     $(`#${name}View`).classList.remove("hidden");
     $$(".nav-item[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
@@ -140,11 +155,16 @@
     if (name === "cases") renderCases();
     if (name === "findings") renderFindings();
     if (name === "scope") renderScopes();
+    if (name === "network") renderNetworkRecords();
+    if (name === "cloud") renderCloudChecks();
   }
 
   function openModal(idToOpen) {
     if (idToOpen === "caseModal") populateCaseScopeSelect();
     if (idToOpen === "findingModal") populateFindingCaseSelect();
+    if (idToOpen === "hostModal") populateNetworkScopeSelect($("#hostScopeSelect"), true);
+    if (idToOpen === "apiCheckModal") populateNetworkScopeSelect($("#apiScopeSelect"), false);
+    if (idToOpen === "cloudCheckModal") populateCloudControlSelect();
     const modal = $(`#${idToOpen}`);
     modal.classList.remove("hidden");
     const focusable = $("input:not([type=checkbox]),select,textarea,button", modal);
@@ -157,6 +177,14 @@
     if (form) form.reset();
     const error = $(".form-error", modal);
     if (error) error.textContent = "";
+    if (modal.id === "caseModal") {
+      editingCaseId = null;
+      $("#caseForm [name=domain]").readOnly = false;
+      $("#caseScopeSelect").disabled = false;
+      $("#caseDomainHelp").textContent = "Enter a domain or IPv4 address covered by the selected authorization. It will be recorded, not contacted.";
+      $("#caseModalTitle").textContent = "Create review case";
+      $("#caseSubmit").textContent = "Create review";
+    }
   }
 
   function populateCaseScopeSelect() {
@@ -179,6 +207,29 @@
     if (!state.cases.length) $("#findingError").textContent = "Create a review case before logging a finding.";
   }
 
+  function populateNetworkScopeSelect(select, ipOnly) {
+    const scopes = state.scopes.filter((scope) => isScopeCurrent(scope) &&
+      (!ipOnly || parseIPv4(scope.domain) !== null || parseIPv4Cidr(scope.domain) !== null));
+    select.innerHTML = '<option value="">Select a current authorization</option>' +
+      scopes.map((scope) => `<option value="${escapeHtml(scope.id)}">${escapeHtml(scope.domain)} — ${escapeHtml(scope.approver)}</option>`).join("");
+    select.disabled = scopes.length === 0;
+    const error = $(`#${ipOnly ? "hostError" : "apiCheckError"}`);
+    if (!scopes.length) {
+      select.innerHTML = `<option value="">No current ${ipOnly ? "IP" : ""} authorization — add one first</option>`;
+      error.textContent = ipOnly
+        ? "Add a current IPv4 or CIDR authorization before recording a host."
+        : "Add a current authorization record before recording an API check.";
+    }
+  }
+
+  function populateCloudControlSelect() {
+    const select = $("#cloudControlSelect");
+    select.innerHTML = CLOUD_CONTROLS.map((control) =>
+      `<option value="${escapeHtml(control.id)}">${escapeHtml(control.category)} — ${escapeHtml(control.title)}</option>`
+    ).join("");
+    updateCloudGuidance();
+  }
+
   function findingCount(caseId) {
     return state.findings.filter((finding) => finding.caseId === caseId).length;
   }
@@ -188,7 +239,7 @@
     const cells = detailed
       ? `<td><span class="case-domain">${escapeHtml(item.domain)}</span></td><td><span class="status-badge status-${slug(item.status)}">${escapeHtml(item.status)}</span></td><td><span class="finding-count">${count}</span></td><td class="row-date">${relativeDate(item.updatedAt)}</td>`
       : `<td><span class="status-badge status-${slug(item.status)}">${escapeHtml(item.status)}</span></td><td><span class="finding-count">${count}</span></td><td class="row-date">${relativeDate(item.updatedAt)}</td>`;
-    return `<tr><td><div class="case-title">${escapeHtml(item.title)}</div><div class="case-domain">${escapeHtml(item.domain)}</div></td>${cells}<td><button class="row-actions delete-case" data-id="${escapeHtml(item.id)}" title="Delete review" aria-label="Delete ${escapeHtml(item.title)}">×</button></td></tr>`;
+    return `<tr><td><div class="case-title">${escapeHtml(item.title)}</div><div class="case-domain">${escapeHtml(item.domain)}</div></td>${cells}<td><div class="case-actions"><button class="case-edit" data-id="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(item.title)}">Edit</button><button class="row-actions delete-case" data-id="${escapeHtml(item.id)}" title="Delete review" aria-label="Delete ${escapeHtml(item.title)}">×</button></div></td></tr>`;
   }
 
   function renderCases() {
@@ -204,8 +255,30 @@
     ).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     $("#allCasesBody").innerHTML = filtered.map((item) => caseRow(item, true)).join("");
     $("#casesEmpty").classList.toggle("visible", filtered.length === 0);
+    $$(".case-edit").forEach((button) => button.addEventListener("click", () => editCase(button.dataset.id)));
     $$(".delete-case").forEach((button) => button.addEventListener("click", () => deleteCase(button.dataset.id)));
     updateStats();
+  }
+
+  function editCase(caseId) {
+    const item = state.cases.find((review) => review.id === caseId);
+    if (!item) return;
+    openModal("caseModal");
+    editingCaseId = item.id;
+    const scope = state.scopes.find((record) => record.id === item.scopeId);
+    const scopeSelect = $("#caseScopeSelect");
+    scopeSelect.innerHTML = `<option value="${escapeHtml(item.scopeId)}">${escapeHtml(scope ? `${scope.domain} — ${scope.approver}` : "Authorization record unavailable")}</option>`;
+    scopeSelect.value = item.scopeId;
+    scopeSelect.disabled = true;
+    $("#caseForm [name=title]").value = item.title;
+    $("#caseForm [name=domain]").value = item.domain;
+    $("#caseForm [name=domain]").readOnly = true;
+    $("#caseForm [name=status]").value = item.status;
+    $("#caseForm [name=assignee]").value = item.assignee || "";
+    $("#caseForm [name=notes]").value = item.notes || "";
+    $("#caseDomainHelp").textContent = "Target and authorization are locked for existing cases.";
+    $("#caseModalTitle").textContent = "Edit review case";
+    $("#caseSubmit").textContent = "Save changes";
   }
 
   function findingRow(item) {
@@ -244,11 +317,50 @@
     $("#scopeCount").textContent = `${list.length} RECORD${list.length === 1 ? "" : "S"}`;
     $("#scopeList").innerHTML = list.map((scope) => {
       const [label, stateClass] = scopeState(scope);
-      return `<article class="scope-card"><div><span class="scope-field-label">AUTHORIZED DOMAIN</span><div class="scope-domain">${escapeHtml(scope.domain)}</div><div class="scope-field-value scope-secondary">${escapeHtml(scope.activities || "Activities not specified")}</div></div><div><span class="scope-field-label">APPROVER / OWNER</span><div class="scope-field-value">${escapeHtml(scope.approver)}</div><div class="scope-field-value scope-secondary">${escapeHtml(scope.reference || "No reference ID")}</div></div><div><span class="scope-field-label">AUTHORIZATION PERIOD</span><div class="scope-dates">${displayDate(scope.startDate)} – ${displayDate(scope.endDate)}</div></div><div class="scope-actions"><span class="scope-valid ${stateClass}">${label}</span><button class="row-actions delete-scope" data-id="${escapeHtml(scope.id)}" title="Delete record" aria-label="Delete authorization for ${escapeHtml(scope.domain)}">×</button></div></article>`;
+      return `<article class="scope-card"><div><span class="scope-field-label">AUTHORIZED DOMAIN / IP RANGE</span><div class="scope-domain">${escapeHtml(scope.domain)}</div><div class="scope-field-value scope-secondary">${escapeHtml(scope.activities || "Activities not specified")}</div></div><div><span class="scope-field-label">APPROVER / OWNER</span><div class="scope-field-value">${escapeHtml(scope.approver)}</div><div class="scope-field-value scope-secondary">${escapeHtml(scope.reference || "No reference ID")}</div></div><div><span class="scope-field-label">AUTHORIZATION PERIOD</span><div class="scope-dates">${displayDate(scope.startDate)} – ${displayDate(scope.endDate)}</div></div><div class="scope-actions"><span class="scope-valid ${stateClass}">${label}</span><button class="row-actions delete-scope" data-id="${escapeHtml(scope.id)}" title="Delete record" aria-label="Delete authorization for ${escapeHtml(scope.domain)}">×</button></div></article>`;
     }).join("");
     $("#scopeEmpty").classList.toggle("visible", list.length === 0);
     $$(".delete-scope").forEach((button) => button.addEventListener("click", () => deleteScope(button.dataset.id)));
     updateStats();
+  }
+
+  function renderNetworkRecords() {
+    const hosts = [...state.hosts].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    $("#hostTableBody").innerHTML = hosts.map((host) => {
+      const scope = state.scopes.find((item) => item.id === host.scopeId);
+      return `<tr><td><div class="case-title">${escapeHtml(host.name)}</div><div class="case-domain">${escapeHtml(host.ipAddress)}</div></td><td><span class="case-domain">${escapeHtml(scope?.domain || "Authorization removed")}</span></td><td><span class="record-badge record-${slug(host.status)}">${escapeHtml(host.status)}</span></td><td class="row-date">${relativeDate(host.createdAt)}</td><td><button class="row-actions delete-host" data-id="${escapeHtml(host.id)}" title="Delete host record" aria-label="Delete host record for ${escapeHtml(host.ipAddress)}">×</button></td></tr>`;
+    }).join("");
+    $("#hostsEmpty").classList.toggle("visible", hosts.length === 0);
+
+    const checks = [...state.apiChecks].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    $("#apiChecksTableBody").innerHTML = checks.map((check) => {
+      const scope = state.scopes.find((item) => item.id === check.scopeId);
+      return `<tr><td><div class="case-title">${escapeHtml(check.title)}</div><div class="case-domain">${escapeHtml(check.endpoint)}</div></td><td><span class="method-badge">${escapeHtml(check.method)}</span></td><td><span class="case-domain">${escapeHtml(scope?.domain || "Authorization removed")}</span></td><td><span class="record-badge record-${slug(check.outcome)}">${escapeHtml(check.outcome)}</span></td><td class="row-date">${escapeHtml(check.statusCode || "—")}</td><td class="row-date">${relativeDate(check.createdAt)}</td><td><button class="row-actions delete-api-check" data-id="${escapeHtml(check.id)}" title="Delete API check" aria-label="Delete API check ${escapeHtml(check.title)}">×</button></td></tr>`;
+    }).join("");
+    $("#apiChecksEmpty").classList.toggle("visible", checks.length === 0);
+    $$(".delete-host").forEach((button) => button.addEventListener("click", () => deleteHost(button.dataset.id)));
+    $$(".delete-api-check").forEach((button) => button.addEventListener("click", () => deleteApiCheck(button.dataset.id)));
+  }
+
+  function renderCloudChecks() {
+    $("#cloudControlList").innerHTML = CLOUD_CONTROLS.map((control) =>
+      `<article class="cloud-control-item"><div class="cloud-control-top"><span class="scope-field-label">${escapeHtml(control.category)}</span><span class="cloud-control-icon">✓</span></div><strong>${escapeHtml(control.title)}</strong><p>${escapeHtml(control.guidance)}</p></article>`
+    ).join("");
+    const checks = [...state.cloudChecks].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    $("#cloudChecksBody").innerHTML = checks.map((check) => {
+      const control = CLOUD_CONTROLS.find((item) => item.id === check.controlId);
+      return `<tr><td><div class="case-title">${escapeHtml(check.resource)}</div><div class="case-domain">${escapeHtml(check.provider)}</div></td><td><div class="case-title">${escapeHtml(control?.title || "Unknown control")}</div><div class="case-domain">${escapeHtml(control?.category || "")}</div></td><td><span class="record-badge record-${slug(check.result)}">${escapeHtml(check.result)}</span></td><td class="row-date">${relativeDate(check.createdAt)}</td><td><button class="row-actions delete-cloud-check" data-id="${escapeHtml(check.id)}" title="Delete cloud check" aria-label="Delete ${escapeHtml(control?.title || "cloud check")} for ${escapeHtml(check.resource)}">×</button></td></tr>`;
+    }).join("");
+    $("#cloudChecksEmpty").classList.toggle("visible", checks.length === 0);
+    const passed = checks.filter((check) => check.result === "Pass").length;
+    const review = checks.filter((check) => check.result === "Needs review" || check.result === "Fail").length;
+    $("#cloudCheckSummary").textContent = `${checks.length} recorded · ${passed} pass · ${review} need attention`;
+    $$(".delete-cloud-check").forEach((button) => button.addEventListener("click", () => deleteCloudCheck(button.dataset.id)));
+  }
+
+  function updateCloudGuidance() {
+    const control = CLOUD_CONTROLS.find((item) => item.id === $("#cloudControlSelect").value);
+    $("#cloudControlGuidance").textContent = control?.guidance || "";
   }
 
   function updateStats() {
@@ -265,11 +377,76 @@
   }
 
   function validateDomain(input) {
-    const domain = input.trim().toLowerCase().replace(/\.$/, "");
+    const domain = String(input).trim().toLowerCase().replace(/\.$/, "");
     if (domain.length > 253 || !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))+$/.test(domain)) {
       return null;
     }
     return domain;
+  }
+
+  function parseIPv4(input) {
+    const octets = String(input).split(".");
+    if (octets.length !== 4 || octets.some((octet) => !/^\d{1,3}$/.test(octet) || Number(octet) > 255)) return null;
+    return octets.reduce((address, octet) => address * 256 + Number(octet), 0);
+  }
+
+  function formatIPv4(address) {
+    return [24, 16, 8, 0].map((shift) => Math.floor(address / (2 ** shift)) % 256).join(".");
+  }
+
+  function parseIPv4Cidr(input) {
+    const parts = String(input).split("/");
+    if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1])) return null;
+    const address = parseIPv4(parts[0]);
+    const prefix = Number(parts[1]);
+    if (address === null || prefix > 32) return null;
+    const blockSize = 2 ** (32 - prefix);
+    const network = Math.floor(address / blockSize) * blockSize;
+    return { network, prefix, blockSize, canonical: `${formatIPv4(network)}/${prefix}` };
+  }
+
+  function validateScopeTarget(input) {
+    const value = String(input).trim().toLowerCase();
+    const cidr = parseIPv4Cidr(value);
+    if (cidr) return cidr.canonical;
+    const address = parseIPv4(value);
+    if (address !== null) return formatIPv4(address);
+    if (/^\d+(?:\.\d+){3}$/.test(value)) return null;
+    return validateDomain(value);
+  }
+
+  function validateCaseTarget(input) {
+    const value = String(input).trim().toLowerCase();
+    const address = parseIPv4(value);
+    if (address !== null) return formatIPv4(address);
+    if (/^\d+(?:\.\d+){3}$/.test(value) || value.includes("/")) return null;
+    return validateDomain(value);
+  }
+
+  function targetIsInScope(target, authorizedTarget) {
+    const targetAddress = parseIPv4(target);
+    const authorizedAddress = parseIPv4(authorizedTarget);
+    const authorizedRange = parseIPv4Cidr(authorizedTarget);
+    if (targetAddress !== null) {
+      if (authorizedAddress !== null) return targetAddress === authorizedAddress;
+      return authorizedRange !== null &&
+        Math.floor(targetAddress / authorizedRange.blockSize) * authorizedRange.blockSize === authorizedRange.network;
+    }
+    return authorizedAddress === null && authorizedRange === null &&
+      (target === authorizedTarget || target.endsWith(`.${authorizedTarget}`));
+  }
+
+  function validateApiEndpoint(input) {
+    try {
+      const endpoint = new URL(String(input).trim());
+      if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search) return null;
+      const host = validateCaseTarget(endpoint.hostname);
+      if (!host) return null;
+      endpoint.hash = "";
+      return { url: endpoint.toString(), host };
+    } catch {
+      return null;
+    }
   }
 
   function deleteCase(caseId) {
@@ -294,8 +471,10 @@
   function deleteScope(scopeId) {
     const item = state.scopes.find((scope) => scope.id === scopeId);
     if (!item || !confirm(`Delete the authorization record for ${item.domain}?`)) return;
-    if (state.cases.some((reviewCase) => reviewCase.scopeId === scopeId)) {
-      showToast("This authorization is linked to a review case and cannot be deleted.");
+    if (state.cases.some((reviewCase) => reviewCase.scopeId === scopeId) ||
+      state.hosts.some((host) => host.scopeId === scopeId) ||
+      state.apiChecks.some((check) => check.scopeId === scopeId)) {
+      showToast("This authorization is linked to a review, host, or API record and cannot be deleted.");
       return;
     }
     state.scopes = state.scopes.filter((scope) => scope.id !== scopeId);
@@ -304,10 +483,40 @@
     showToast("Authorization record deleted.");
   }
 
+  function deleteHost(hostId) {
+    const host = state.hosts.find((item) => item.id === hostId);
+    if (!host || !confirm(`Delete host record for ${host.ipAddress}?`)) return;
+    state.hosts = state.hosts.filter((item) => item.id !== hostId);
+    if (!saveState()) return;
+    renderNetworkRecords();
+    showToast("Host record deleted.");
+  }
+
+  function deleteApiCheck(checkId) {
+    const check = state.apiChecks.find((item) => item.id === checkId);
+    if (!check || !confirm(`Delete API check "${check.title}"?`)) return;
+    state.apiChecks = state.apiChecks.filter((item) => item.id !== checkId);
+    if (!saveState()) return;
+    renderNetworkRecords();
+    showToast("API check deleted.");
+  }
+
+  function deleteCloudCheck(checkId) {
+    const check = state.cloudChecks.find((item) => item.id === checkId);
+    const control = CLOUD_CONTROLS.find((item) => item.id === check?.controlId);
+    if (!check || !confirm(`Delete cloud check "${control?.title || "cloud check"}" for ${check.resource}?`)) return;
+    state.cloudChecks = state.cloudChecks.filter((item) => item.id !== checkId);
+    if (!saveState()) return;
+    renderCloudChecks();
+    showToast("Cloud check deleted.");
+  }
+
   function refresh() {
     renderCases();
     renderFindings();
     renderScopes();
+    renderNetworkRecords();
+    renderCloudChecks();
   }
 
   function exportWorkspace() {
@@ -348,16 +557,17 @@
     $("#findingSearch").addEventListener("input", renderFindings);
     $("#findingRiskLevelFilter").addEventListener("change", renderFindings);
     $("#findingRiskScore").addEventListener("input", updateRiskPreview);
+    $("#cloudControlSelect").addEventListener("change", updateCloudGuidance);
 
     $("#scopeForm").addEventListener("submit", (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const domain = validateDomain(form.get("domain"));
+      const domain = validateScopeTarget(form.get("domain"));
       const startDate = form.get("startDate");
       const endDate = form.get("endDate");
       const error = $("#scopeError");
       error.textContent = "";
-      if (!domain) { error.textContent = "Enter a valid domain, without a protocol, path, or port."; return; }
+      if (!domain) { error.textContent = "Enter a valid domain, IPv4 address, or IPv4 CIDR range (for example, 192.168.1.20 or 192.168.1.0/24)."; return; }
       if (endDate < startDate) { error.textContent = "The authorization end date must be on or after the start date."; return; }
       const scope = {
         id: id(), domain, approver: String(form.get("approver")).trim(),
@@ -371,17 +581,147 @@
       showToast("Authorization record saved.");
     });
 
+    $("#hostForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const ipAddress = validateCaseTarget(form.get("ipAddress"));
+      const scope = state.scopes.find((item) => item.id === form.get("scopeId"));
+      const error = $("#hostError");
+      error.textContent = "";
+      if (!ipAddress || parseIPv4(ipAddress) === null) {
+        error.textContent = "Enter a valid IPv4 address.";
+        return;
+      }
+      if (!scope || !isScopeCurrent(scope) || (parseIPv4(scope.domain) === null && !parseIPv4Cidr(scope.domain))) {
+        error.textContent = "Select a current IPv4 or CIDR authorization.";
+        return;
+      }
+      if (!targetIsInScope(ipAddress, scope.domain)) {
+        error.textContent = `This IP is outside the authorized range ${scope.domain}.`;
+        return;
+      }
+      const host = {
+        id: id(),
+        name: String(form.get("name")).trim(),
+        ipAddress,
+        scopeId: scope.id,
+        status: form.get("status"),
+        notes: String(form.get("notes")).trim(),
+        createdAt: new Date().toISOString(),
+      };
+      state.hosts.push(host);
+      if (!saveState()) { state.hosts.pop(); return; }
+      closeModal($("#hostModal"));
+      renderNetworkRecords();
+      showToast("Host observation recorded.");
+    });
+
+    $("#apiCheckForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const endpoint = validateApiEndpoint(form.get("endpoint"));
+      const scope = state.scopes.find((item) => item.id === form.get("scopeId"));
+      const statusCodeValue = String(form.get("statusCode")).trim();
+      const statusCode = statusCodeValue ? Number(statusCodeValue) : null;
+      const error = $("#apiCheckError");
+      error.textContent = "";
+      if (!endpoint) {
+        error.textContent = "Enter an HTTP or HTTPS API endpoint without credentials or query parameters.";
+        return;
+      }
+      if (!scope || !isScopeCurrent(scope)) {
+        error.textContent = "Select a current authorization record.";
+        return;
+      }
+      if (!targetIsInScope(endpoint.host, scope.domain)) {
+        error.textContent = `The API hostname must be within the authorized scope ${scope.domain}.`;
+        return;
+      }
+      if (statusCodeValue && (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599)) {
+        error.textContent = "Enter a valid HTTP status code from 100 to 599, or leave it blank.";
+        return;
+      }
+      const check = {
+        id: id(),
+        title: String(form.get("title")).trim(),
+        endpoint: endpoint.url,
+        method: form.get("method"),
+        scopeId: scope.id,
+        outcome: form.get("outcome"),
+        statusCode,
+        notes: String(form.get("notes")).trim(),
+        createdAt: new Date().toISOString(),
+      };
+      state.apiChecks.push(check);
+      if (!saveState()) { state.apiChecks.pop(); return; }
+      closeModal($("#apiCheckModal"));
+      renderNetworkRecords();
+      showToast("API test result recorded.");
+    });
+
+    $("#cloudCheckForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const control = CLOUD_CONTROLS.find((item) => item.id === form.get("controlId"));
+      const error = $("#cloudCheckError");
+      error.textContent = "";
+      if (!control) {
+        error.textContent = "Select a cloud security control.";
+        return;
+      }
+      if (!["AWS", "Microsoft Azure", "Google Cloud", "Other"].includes(form.get("provider")) ||
+        !["Not assessed", "Pass", "Needs review", "Fail", "Not applicable"].includes(form.get("result"))) {
+        error.textContent = "Select a valid provider and review result.";
+        return;
+      }
+      if (!form.get("confirmed")) {
+        error.textContent = "Confirm that you are authorized and recorded the check manually.";
+        return;
+      }
+      const check = {
+        id: id(),
+        provider: form.get("provider"),
+        resource: String(form.get("resource")).trim(),
+        controlId: control.id,
+        result: form.get("result"),
+        notes: String(form.get("notes")).trim(),
+        createdAt: new Date().toISOString(),
+      };
+      state.cloudChecks.push(check);
+      if (!saveState()) { state.cloudChecks.pop(); return; }
+      closeModal($("#cloudCheckModal"));
+      renderCloudChecks();
+      showToast("Cloud security check recorded.");
+    });
+
     $("#caseForm").addEventListener("submit", (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const domain = validateDomain(form.get("domain"));
-      const scope = state.scopes.find((item) => item.id === form.get("scopeId"));
       const error = $("#caseError");
       error.textContent = "";
-      if (!domain) { error.textContent = "Enter a valid domain, without a protocol, path, or port."; return; }
+      if (editingCaseId) {
+        const existing = state.cases.find((item) => item.id === editingCaseId);
+        if (!existing) { error.textContent = "This review case no longer exists."; return; }
+        const previous = { ...existing };
+        Object.assign(existing, {
+          title: String(form.get("title")).trim(),
+          status: form.get("status"),
+          assignee: String(form.get("assignee")).trim(),
+          notes: String(form.get("notes")).trim(),
+          updatedAt: new Date().toISOString(),
+        });
+        if (!saveState()) { Object.assign(existing, previous); return; }
+        closeModal($("#caseModal"));
+        refresh();
+        showToast("Review case updated.");
+        return;
+      }
+      const domain = validateCaseTarget(form.get("domain"));
+      const scope = state.scopes.find((item) => item.id === form.get("scopeId"));
+      if (!domain) { error.textContent = "Enter a valid domain or IPv4 address, without a protocol, path, port, or CIDR suffix."; return; }
       if (!scope || !isScopeCurrent(scope)) { error.textContent = "Select a current authorization record."; return; }
-      if (scope.domain !== domain && !domain.endsWith(`.${scope.domain}`)) {
-        error.textContent = `The target must be within the authorized domain ${scope.domain}.`;
+      if (!targetIsInScope(domain, scope.domain)) {
+        error.textContent = `The target must be within the authorized scope ${scope.domain}.`;
         return;
       }
       const now = new Date().toISOString();
